@@ -145,7 +145,7 @@
     <string name="zoom_in">+</string>
     <string name="zoom_out">—</string>
     <string name="scale">比例尺</string>
-    <string name="buttonScale">获取比例尺</string>
+    <string name="buttonScale">导航</string>
 
     <!-- offlinemap -->
     <string name="beijing">"北京"</string>
@@ -187,7 +187,7 @@
     <string name="route_share">路径规划分享</string>
     <string name="poi_share">POI分享</string>
     <string name="navi_share">导航分享</string>
-    
+
     <string name="map_create">创建地图</string>
     <string name="map_interactive">地图交互</string>
     <string name="map_overlay">地图上绘制</string>
@@ -255,5 +255,6 @@
     <!-- 自定义样式 -->
     <string name="style_custom_on">开启个性化地图</string>
     <string name="style_custom_off">关闭个性化地图</string>
+    <string name="btn_search_str">搜索</string>
 
 </resources>

@@ -1,13 +1,19 @@
 package com.run.sg.amap3d.district;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemSelectedListener;
 import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
+import android.widget.Button;
+import android.widget.ListView;
+import android.widget.SimpleAdapter;
 import android.widget.Spinner;
-import android.widget.TextView;
 
 import com.amap.api.services.core.AMapException;
 import com.amap.api.services.core.LatLonPoint;
@@ -16,6 +22,10 @@ import com.amap.api.services.district.DistrictResult;
 import com.amap.api.services.district.DistrictSearch;
 import com.amap.api.services.district.DistrictSearch.OnDistrictSearchListener;
 import com.amap.api.services.district.DistrictSearchQuery;
+import com.amap.api.services.help.Inputtips;
+import com.amap.api.services.help.InputtipsQuery;
+import com.amap.api.services.help.Tip;
+import com.run.sg.amap3d.basic.UiSettingsActivity;
 import com.run.sg.amap3d.util.ToastUtil;
 
 import java.util.ArrayList;
@@ -27,17 +37,12 @@ import java.util.Map;
  * 政区划查询
  */
 public class DistrictActivity extends Activity implements
-		OnDistrictSearchListener, OnItemSelectedListener {
+		OnDistrictSearchListener, OnItemSelectedListener,
+		TextWatcher, Inputtips.InputtipsListener {
 
 	public static final String COUNTRY = "country"; // 行政区划，国家级
-
 	public static final String PROVINCE = "province"; // 行政区划，省级
-
 	public static final String CITY = "city"; // 行政区划，市级
-
-	public static final String DISTRICT = "district"; // 行政区划，区级
-
-	public static final String BUSINESS = "biz_area"; // 行政区划，商圈级
 
 	//当前选中的级别
 	private String selectedLevel = COUNTRY;
@@ -62,32 +67,122 @@ public class DistrictActivity extends Activity implements
 
 	private Spinner spinnerProvince;
 	private Spinner spinnerCity;
-	private Spinner spinnerDistrict;
-	private TextView tv_countryInfo = null;
-	private TextView tv_provinceInfo = null;
-	private TextView tv_cityInfo = null;
-	private TextView tv_districtInfo = null;
-	
+	private AutoCompleteTextView mKeywordText;
+	private Button mButtonConfirm;
+	private ListView mInputList;
+	List<String> mListAddress = new ArrayList<String>();
+	private String mCityName = "深圳";
+	private String mCityCode = "0755";
+	private List<LatLonPoint> mListLatLonPoint = new ArrayList<LatLonPoint>();
+	private LatLonPoint mSearchPoint = null;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(com.run.sg.amap3d.R.layout.district_activity);
 
-		tv_countryInfo = (TextView) findViewById(com.run.sg.amap3d.R.id.tv_countryInfo);
-		tv_provinceInfo = (TextView) findViewById(com.run.sg.amap3d.R.id.tv_provinceInfo);
-		tv_cityInfo = (TextView) findViewById(com.run.sg.amap3d.R.id.tv_cityInfo);
-		tv_districtInfo = (TextView) findViewById(com.run.sg.amap3d.R.id.tv_districtInfo);
-
 		spinnerProvince = (Spinner) findViewById(com.run.sg.amap3d.R.id.spinner_province);
 		spinnerCity = (Spinner) findViewById(com.run.sg.amap3d.R.id.spinner_city);
-		spinnerDistrict = (Spinner) findViewById(com.run.sg.amap3d.R.id.spinner_district);
+		mKeywordText = (AutoCompleteTextView)findViewById(com.run.sg.amap3d.R.id.text_street);
+		mInputList = (ListView)findViewById(com.run.sg.amap3d.R.id.input_list);
+		mButtonConfirm = (Button) findViewById(com.run.sg.amap3d.R.id.btn_confirm);
 
 		spinnerProvince.setOnItemSelectedListener(this);
 		spinnerCity.setOnItemSelectedListener(this);
-		spinnerDistrict.setOnItemSelectedListener(this);
+		mKeywordText.addTextChangedListener(this);
+		mInputList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+			@Override
+			public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+				mKeywordText.setText(mListAddress.get(position));
+				mSearchPoint = mListLatLonPoint.get(position);
+				mListAddress.clear();
+				mListLatLonPoint.clear();
+			}
+		});
+		mButtonConfirm.setOnClickListener(new View.OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				Intent intent = new Intent(DistrictActivity.this, UiSettingsActivity.class);
+				Bundle bundle = new Bundle();
+				bundle.putString("cityCode", mCityCode);
+				bundle.putDouble("Lat", mSearchPoint.getLatitude());
+				bundle.putDouble("Lon", mSearchPoint.getLongitude());
+				intent.putExtra("destination", bundle);
+				DistrictActivity.this.setResult(0, intent);
+				finish();
+			}
+		});
 
 		init();
+	}
+
+	/**
+	 * 初始化
+	 */
+	private void init() {
+		// 设置行政区划查询监听
+		DistrictSearch districtSearch = new DistrictSearch(this);
+		districtSearch.setOnDistrictSearchListener(this);
+		// 查询中国的区划
+		DistrictSearchQuery query = new DistrictSearchQuery();
+		query.setKeywords("中国");
+		districtSearch.setQuery(query);
+		// 异步查询行政区
+		districtSearch.searchDistrictAsyn();
+	}
+
+	@Override
+	public void beforeTextChanged(CharSequence s, int start, int count,
+								  int after) {
+		// TODO Auto-generated method stub
+
+	}
+
+	@Override
+	public void onTextChanged(CharSequence s, int start, int before, int count) {
+		String newText = s.toString().trim();
+		InputtipsQuery inputquery = new InputtipsQuery(newText, mCityName);
+		inputquery.setCityLimit(true);
+		Inputtips inputTips = new Inputtips(DistrictActivity.this, inputquery);
+		inputTips.setInputtipsListener(this);
+		inputTips.requestInputtipsAsyn();
+	}
+
+	@Override
+	public void afterTextChanged(Editable s) {
+		// TODO Auto-generated method stub
+
+	}
+
+	/**
+	 * 输入提示结果的回调
+	 * @param tipList
+	 * @param rCode
+	 */
+	@Override
+	public void onGetInputtips(final List<Tip> tipList, int rCode) {
+		mListLatLonPoint.clear();
+		mListAddress.clear();
+		if (rCode == AMapException.CODE_AMAP_SUCCESS) {
+			List<HashMap<String, String>> listString = new ArrayList<HashMap<String, String>>();
+			for (int i = 0; i < tipList.size(); i++) {
+				HashMap<String, String> map = new HashMap<String, String>();
+				map.put("name", tipList.get(i).getName());
+				map.put("address", tipList.get(i).getDistrict());
+				listString.add(map);
+				mListLatLonPoint.add(tipList.get(i).getPoint());
+				mListAddress.add(tipList.get(i).getName());
+			}
+			SimpleAdapter aAdapter = new SimpleAdapter(getApplicationContext(), listString, com.run.sg.amap3d.R.layout.item_layout,
+					new String[] {"name","address"}, new int[] {com.run.sg.amap3d.R.id.poi_field_id, com.run.sg.amap3d.R.id.poi_value_id});
+
+			mInputList.setAdapter(aAdapter);
+			aAdapter.notifyDataSetChanged();
+
+		} else {
+			ToastUtil.showerror(this.getApplicationContext(), rCode);
+		}
+
 	}
 
 	@Override
@@ -124,7 +219,6 @@ public class DistrictActivity extends Activity implements
 				if (!isInit) {
 					isInit = true;
 					currentDistrictItem = district.get(0);
-					tv_countryInfo.setText(getDistrictInfoStr(currentDistrictItem));
 				}
 
 				// 将查询得到的区划的下级区划写入缓存
@@ -134,8 +228,7 @@ public class DistrictActivity extends Activity implements
 							districtItem.getSubDistrict());
 				}
 				// 获取当前区划的下级区划列表
-				subDistrictList = subDistrictMap
-						.get(currentDistrictItem.getAdcode());
+				subDistrictList = subDistrictMap.get(currentDistrictItem.getAdcode());
 			} else {
 				ToastUtil.showerror(this, result.getAMapException().getErrorCode());
 			}
@@ -163,6 +256,8 @@ public class DistrictActivity extends Activity implements
 			sb.append("经纬度:(" + center.getLongitude() + ", "
 					+ center.getLatitude() + ")\n");
 		}
+		mCityName = districtItem.getName();
+		mCityCode = districtItem.getCitycode();
 		return sb.toString();
 	}
 	
@@ -182,19 +277,18 @@ public class DistrictActivity extends Activity implements
 				spinnerProvince.setAdapter(adapter);
 			}
 
-			if (selectedLevel
-					.equalsIgnoreCase(PROVINCE)) {
+			if (selectedLevel.equalsIgnoreCase(PROVINCE)) {
 				cityList = subDistrictList;
 				spinnerCity.setAdapter(adapter);
 			}
 
 			if (selectedLevel.equalsIgnoreCase(CITY)) {
 				districtList = subDistrictList;
-				//如果没有区县，将区县说明置空
-				if(null == nameList || nameList.size() <= 0){
-					tv_districtInfo.setText("");
-				}
-				spinnerDistrict.setAdapter(adapter);
+//				//如果没有区县，将区县说明置空
+//				if(null == nameList || nameList.size() <= 0){
+//					tv_districtInfo.setText("");
+//				}
+//				spinnerDistrict.setAdapter(adapter);
 			}
 		} else {
 			List<String> emptyNameList = new ArrayList<String>();
@@ -204,43 +298,25 @@ public class DistrictActivity extends Activity implements
 				
 				spinnerProvince.setAdapter(emptyAdapter);
 				spinnerCity.setAdapter(emptyAdapter);
-				spinnerDistrict.setAdapter(emptyAdapter);
-				tv_provinceInfo.setText("");
-				tv_cityInfo.setText("");
-				tv_districtInfo.setText("");
+//				spinnerDistrict.setAdapter(emptyAdapter);
+//				tv_provinceInfo.setText("");
+//				tv_cityInfo.setText("");
+//				tv_districtInfo.setText("");
 			}
 
-			if (selectedLevel
-					.equalsIgnoreCase(PROVINCE)) {
+			if (selectedLevel.equalsIgnoreCase(PROVINCE)) {
 			 
 				spinnerCity.setAdapter(emptyAdapter);
-				spinnerDistrict.setAdapter(emptyAdapter);
-				tv_cityInfo.setText("");
-				tv_districtInfo.setText("");
+//				spinnerDistrict.setAdapter(emptyAdapter);
+//				tv_cityInfo.setText("");
+//				tv_districtInfo.setText("");
 			}
 			
-			if (selectedLevel
-					.equalsIgnoreCase(CITY)) {
-				spinnerDistrict.setAdapter(emptyAdapter);
-				tv_districtInfo.setText("");
+			if (selectedLevel.equalsIgnoreCase(CITY)) {
+//				spinnerDistrict.setAdapter(emptyAdapter);
+//				tv_districtInfo.setText("");
 			}
 		}
-	}
-
-	/**
-	 * 初始化
-	 */
-	private void init() {
-		// 设置行政区划查询监听
-		DistrictSearch districtSearch = new DistrictSearch(this);
-		districtSearch.setOnDistrictSearchListener(this);
-		// 查询中国的区划
-		DistrictSearchQuery query = new DistrictSearchQuery();
-		query.setKeywords("中国");
-		districtSearch.setQuery(query);
-		// 异步查询行政区
-		districtSearch.searchDistrictAsyn();
-
 	}
 
 	/**
@@ -267,18 +343,18 @@ public class DistrictActivity extends Activity implements
 		case com.run.sg.amap3d.R.id.spinner_province:
 			districtItem = provinceList.get(position);
 			selectedLevel = PROVINCE;
-			tv_provinceInfo.setText(getDistrictInfoStr(districtItem));
+			getDistrictInfoStr(districtItem);
 			break;
 		case com.run.sg.amap3d.R.id.spinner_city:
 			selectedLevel = CITY;
 			districtItem = cityList.get(position);
-			tv_cityInfo.setText(getDistrictInfoStr(districtItem));
+			getDistrictInfoStr(districtItem);
 			break;
-		case com.run.sg.amap3d.R.id.spinner_district:
-			selectedLevel = DISTRICT;
-			districtItem = districtList.get(position);
-			tv_districtInfo.setText(getDistrictInfoStr(districtItem));
-			break;
+//		case com.run.sg.amap3d.R.id.spinner_district:
+//			selectedLevel = DISTRICT;
+//			districtItem = districtList.get(position);
+//			tv_districtInfo.setText(getDistrictInfoStr(districtItem));
+//			break;
 		default:
 			break;
 		}

@@ -1,6 +1,9 @@
 package com.run.sg.amap3d.basic;
 
 import android.app.Activity;
+import android.app.ProgressDialog;
+import android.content.Context;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -10,6 +13,8 @@ import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.Window;
 import android.widget.Button;
+import android.widget.RelativeLayout;
+import android.widget.TextView;
 
 import com.amap.api.location.AMapLocation;
 import com.amap.api.location.AMapLocationClient;
@@ -28,20 +33,38 @@ import com.amap.api.maps.model.LatLng;
 import com.amap.api.maps.model.Marker;
 import com.amap.api.maps.model.MarkerOptions;
 import com.amap.api.maps.model.MyLocationStyle;
+import com.amap.api.services.core.AMapException;
+import com.amap.api.services.core.LatLonPoint;
+import com.amap.api.services.route.BusRouteResult;
+import com.amap.api.services.route.DriveRouteResult;
+import com.amap.api.services.route.RideRouteResult;
+import com.amap.api.services.route.RouteSearch;
+import com.amap.api.services.route.WalkPath;
+import com.amap.api.services.route.WalkRouteResult;
 import com.run.sg.amap3d.R;
+import com.run.sg.amap3d.district.DistrictActivity;
+import com.run.sg.amap3d.route.WalkRouteDetailActivity;
+import com.run.sg.amap3d.util.AMapUtil;
 import com.run.sg.amap3d.util.SensorEventHelper;
 import com.run.sg.amap3d.util.ToastUtil;
+import com.run.sg.navigation.WalkRouteCalculateActivity;
+
+import overlay.WalkRouteOverlay;
 
 /**
  * UI settings一些选项设置响应事件
  */
-public class UiSettingsActivity extends Activity
-		implements OnClickListener, LocationSource, AMapLocationListener {
+public class UiSettingsActivity extends Activity implements
+		LocationSource, AMapLocationListener, AMap.OnMapClickListener,
+		AMap.OnMarkerClickListener, AMap.OnInfoWindowClickListener,
+		AMap.InfoWindowAdapter, RouteSearch.OnRouteSearchListener {
+
+	private Context mContext;
 	private AMap aMap;
 	private MapView mapView;
 	private UiSettings mUiSettings;
-	private OnLocationChangedListener mListener;
-	private AMapLocationClient mlocationClient;
+	private LocationSource.OnLocationChangedListener mListener;
+	private AMapLocationClient mLocationClient;
 	private AMapLocationClientOption mLocationOption;
 	private SensorEventHelper mSensorHelper;
 	private Marker mLocMarker;
@@ -50,12 +73,26 @@ public class UiSettingsActivity extends Activity
 	public static final String LOCATION_MARKER_FLAG = "mylocation";
 	private static final int STROKE_COLOR = Color.argb(180, 3, 145, 255);
 	private static final int FILL_COLOR = Color.argb(10, 0, 0, 180);
-	
+	private double mStartPointLat = 0.0;
+	private double mStartPointLon = 0.0;
+	private LatLonPoint mStartPoint;
+	private String mCityCode;
+	private double mEndPointLat = 0.0;
+	private double mEndPointLon = 0.0;
+	private LatLonPoint mEndPoint;
+	private RouteSearch mRouteSearch;
+	private final int ROUTE_TYPE_WALK = 3;
+	private ProgressDialog progressDialog = null;// 搜索时进度条
+	private WalkRouteResult mWalkRouteResult;
+	private RelativeLayout mBottomLayout;
+	private TextView mRouteTimeDes, mRouteDetailDes;
+
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		requestWindowFeature(Window.FEATURE_NO_TITLE);// 不显示程序的标题栏
 		setContentView(R.layout.ui_settings_activity);
+		mContext = this.getApplicationContext();
 		/*
 		 * 设置离线地图存储目录，在下载离线地图或初始化地图设置; 使用过程中可自行设置, 若自行设置了离线地图存储的路径，
 		 * 则需要在离线地图下载和使用地图页面都进行路径设置
@@ -79,9 +116,34 @@ public class UiSettingsActivity extends Activity
 		}
 		mSensorHelper = new SensorEventHelper(this);
 		Button buttonScale = (Button) findViewById(com.run.sg.amap3d.R.id.buttonScale);
-		buttonScale.setOnClickListener(this);
-
+		buttonScale.setOnClickListener(mOnClickListener);
+		Button buttonSearch = (Button) findViewById(R.id.btn_search);
+		buttonSearch.setOnClickListener(mOnClickListener);
 	}
+
+	private OnClickListener mOnClickListener = new OnClickListener() {
+		@Override
+		public void onClick(View v) {
+			switch (v.getId()) {
+				case R.id.buttonScale :
+					Intent naviIntent = new Intent(UiSettingsActivity.this, WalkRouteCalculateActivity.class);
+					if (mStartPointLat > 0.0 && mStartPointLon > 0.0 && mEndPointLat > 0.0 && mEndPointLon > 0.0) {
+						naviIntent.putExtra("startPointLat", mStartPointLat);
+						naviIntent.putExtra("startPointLon", mStartPointLon);
+						naviIntent.putExtra("endPointLat", mEndPointLat);
+						naviIntent.putExtra("endPointLon", mEndPointLon);
+					}
+					startActivity(naviIntent);
+					break;
+				case R.id.btn_search :
+					Intent intent = new Intent(UiSettingsActivity.this, DistrictActivity.class);
+					startActivityForResult(intent, 0);
+					break;
+				default :
+					break;
+			}
+		}
+	};
 
 	/**
 	 * 设置一些amap的属性
@@ -98,19 +160,18 @@ public class UiSettingsActivity extends Activity
 	private void setupLocationStyle(){
 		// 自定义系统定位蓝点
 		MyLocationStyle myLocationStyle = new MyLocationStyle();
-//		//设置连续定位模式下的定位间隔，只在连续定位模式下生效，单次定位模式下不会生效。单位为毫秒。
-//		myLocationStyle.interval(2000);
-		//定位一次，且将视角移动到地图中心点。
-		myLocationStyle.myLocationType(MyLocationStyle.LOCATION_TYPE_SHOW) ;
-//		// 自定义定位蓝点图标
-//		myLocationStyle.myLocationIcon(BitmapDescriptorFactory.
-//				fromResource(R.drawable.location_marker));
-//		// 自定义精度范围的圆形边框颜色
-//		myLocationStyle.strokeColor(STROKE_COLOR);
-//		//自定义精度范围的圆形边框宽度
-//		myLocationStyle.strokeWidth(5);
-//		// 设置圆形的填充颜色
-//		myLocationStyle.radiusFillColor(FILL_COLOR);
+		//设置连续定位模式下的定位间隔，只在连续定位模式下生效，单次定位模式下不会生效。单位为毫秒。
+		myLocationStyle.interval(2000);
+//		//定位一次，且将视角移动到地图中心点。
+//		myLocationStyle.myLocationType(MyLocationStyle.LOCATION_TYPE_SHOW) ;
+		// 自定义定位蓝点图标
+		myLocationStyle.myLocationIcon(BitmapDescriptorFactory.fromResource(R.drawable.location_marker));
+		// 自定义精度范围的圆形边框颜色
+		myLocationStyle.strokeColor(STROKE_COLOR);
+		//自定义精度范围的圆形边框宽度
+		myLocationStyle.strokeWidth(5);
+		// 设置圆形的填充颜色
+		myLocationStyle.radiusFillColor(FILL_COLOR);
 		// 将自定义的 myLocationStyle 对象添加到地图上
 		aMap.setMyLocationStyle(myLocationStyle);
 	}
@@ -147,7 +208,6 @@ public class UiSettingsActivity extends Activity
 			mSensorHelper = null;
 		}
 		mapView.onPause();
-		deactivate();
 		mFirstFix = false;
 	}
 
@@ -167,21 +227,8 @@ public class UiSettingsActivity extends Activity
 	protected void onDestroy() {
 		super.onDestroy();
 		mapView.onDestroy();
-		if(null != mlocationClient){
-			mlocationClient.onDestroy();
-		}
-	}
-
-	@Override
-	public void onClick(View view) {
-		switch (view.getId()) {
-		/**
-		 * 一像素代表多少米
-		 */
-		case com.run.sg.amap3d.R.id.buttonScale:
-			float scale = aMap.getScalePerPixel();
-			ToastUtil.show(UiSettingsActivity.this, "每像素代表" + scale + "米");
-			break;
+		if(null != mLocationClient){
+			mLocationClient.onDestroy();
 		}
 	}
 
@@ -191,27 +238,27 @@ public class UiSettingsActivity extends Activity
 	@Override
 	public void onLocationChanged(AMapLocation amapLocation) {
 		if (mListener != null && amapLocation != null) {
-			if (amapLocation != null
-					&& amapLocation.getErrorCode() == 0) {
+			if (amapLocation != null && amapLocation.getErrorCode() == 0) {
 				LatLng location = new LatLng(amapLocation.getLatitude(), amapLocation.getLongitude());
 				if (!mFirstFix) {
 					mFirstFix = true;
+					mStartPointLat = amapLocation.getLatitude();
+					mStartPointLon = amapLocation.getLongitude();
 					addCircle(location, amapLocation.getAccuracy());//添加定位精度圆
 					addMarker(location);//添加定位图标
 					mSensorHelper.setCurrentMarker(mLocMarker);//定位图标旋转
-				}
-				else {
 					mCircle.setCenter(location);
 					mCircle.setRadius(amapLocation.getAccuracy());
+					aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(location, 16));
+				}
+				else {
 					mLocMarker.setPosition(location);
 				}
-				aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(location, 16));
 			} else {
 				String errText = "定位失败," + amapLocation.getErrorCode()+ ": " + amapLocation.getErrorInfo();
 				Log.e("AmapErr",errText);
 			}
 		}
-		deactivate();
 	}
 
 	private void addCircle(LatLng latlng, double radius) {
@@ -245,20 +292,20 @@ public class UiSettingsActivity extends Activity
 	@Override
 	public void activate(OnLocationChangedListener listener) {
 		mListener = listener;
-		if (mlocationClient == null) {
-			mlocationClient = new AMapLocationClient(this);
+		if (mLocationClient == null) {
+			mLocationClient = new AMapLocationClient(this);
 			mLocationOption = new AMapLocationClientOption();
 			//设置定位监听
-			mlocationClient.setLocationListener(this);
+			mLocationClient.setLocationListener(this);
 			//设置为高精度定位模式
 			mLocationOption.setLocationMode(AMapLocationClientOption.AMapLocationMode.Hight_Accuracy);
 			//设置定位参数
-			mlocationClient.setLocationOption(mLocationOption);
+			mLocationClient.setLocationOption(mLocationOption);
 			// 此方法为每隔固定时间会发起一次定位请求，为了减少电量消耗或网络流量消耗，
 			// 注意设置合适的定位时间的间隔（最小间隔支持为2000ms），并且在合适时间调用stopLocation()方法来取消定位请求
 			// 在定位结束后，在合适的生命周期调用onDestroy()方法
 			// 在单次定位情况下，定位无论成功与否，都无需调用stopLocation()方法移除请求，定位sdk内部会移除
-			mlocationClient.startLocation();
+			mLocationClient.startLocation();
 		}
 	}
 
@@ -268,11 +315,186 @@ public class UiSettingsActivity extends Activity
 	@Override
 	public void deactivate() {
 		mListener = null;
-		if (mlocationClient != null) {
-			mlocationClient.stopLocation();
-			mlocationClient.onDestroy();
+		if (mLocationClient != null) {
+			mLocationClient.stopLocation();
+			mLocationClient.onDestroy();
 		}
-		mlocationClient = null;
+		mLocationClient = null;
 	}
 
+	@Override
+	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+		if (requestCode == 0 && resultCode == 0) {
+			Bundle bundle = data.getBundleExtra("destination");
+			mCityCode = bundle.getString("cityCode");
+			mEndPointLat = bundle.getDouble("Lat");
+			mEndPointLon = bundle.getDouble("Lon");
+			mStartPoint = new LatLonPoint(mStartPointLat, mStartPointLon);
+			mEndPoint = new LatLonPoint(mEndPointLat, mEndPointLon);
+			routePlan(mStartPoint, mEndPoint);
+		}
+	}
+
+	private void routePlan(LatLonPoint startPoint, LatLonPoint endPoint) {
+		initRoutePlan();
+		setFromAndToMarker(startPoint, endPoint);
+		searchRouteResult(ROUTE_TYPE_WALK, RouteSearch.WalkDefault, startPoint, endPoint);
+	}
+
+	private void initRoutePlan() {
+		registerListener();
+		mRouteSearch = new RouteSearch(this);
+		mRouteSearch.setRouteSearchListener(this);
+		mBottomLayout = (RelativeLayout) findViewById(com.run.sg.amap3d.R.id.bottom_layout);
+		mRouteTimeDes = (TextView) findViewById(com.run.sg.amap3d.R.id.firstline);
+		mRouteDetailDes = (TextView) findViewById(com.run.sg.amap3d.R.id.secondline);
+	}
+
+	private void registerListener() {
+		aMap.setOnMapClickListener(UiSettingsActivity.this);
+		aMap.setOnMarkerClickListener(UiSettingsActivity.this);
+		aMap.setOnInfoWindowClickListener(UiSettingsActivity.this);
+		aMap.setInfoWindowAdapter(UiSettingsActivity.this);
+	}
+
+	private void setFromAndToMarker(LatLonPoint startPoint, LatLonPoint searchPoint) {
+		aMap.addMarker(new MarkerOptions()
+				.position(AMapUtil.convertToLatLng(startPoint))
+				.icon(BitmapDescriptorFactory.fromResource(com.run.sg.amap3d.R.drawable.start)));
+		aMap.addMarker(new MarkerOptions()
+				.position(AMapUtil.convertToLatLng(searchPoint))
+				.icon(BitmapDescriptorFactory.fromResource(com.run.sg.amap3d.R.drawable.end)));
+	}
+
+
+	/**
+	 * 开始搜索路径规划方案
+	 */
+	public void searchRouteResult(int routeType, int mode, LatLonPoint startPoint, LatLonPoint endPoint) {
+		if (startPoint == null) {
+			ToastUtil.show(mContext, "定位中，稍后再试...");
+			return;
+		}
+		if (endPoint == null) {
+			ToastUtil.show(mContext, "终点未设置");
+		}
+		showProgressDialog();
+		final RouteSearch.FromAndTo fromAndTo = new RouteSearch.FromAndTo(startPoint, endPoint);
+		if (routeType == ROUTE_TYPE_WALK) {// 步行路径规划
+			RouteSearch.WalkRouteQuery query = new RouteSearch.WalkRouteQuery(fromAndTo, mode);
+			mRouteSearch.calculateWalkRouteAsyn(query);// 异步路径规划步行模式查询
+		}
+	}
+
+	/**
+	 * 显示进度框
+	 */
+	private void showProgressDialog() {
+		if (progressDialog == null) {
+			progressDialog = new ProgressDialog(this);
+		}
+		progressDialog.setProgressStyle(ProgressDialog.STYLE_SPINNER);
+		progressDialog.setIndeterminate(false);
+		progressDialog.setCancelable(true);
+		progressDialog.setMessage("正在搜索");
+		progressDialog.show();
+	}
+
+	/**
+	 * 隐藏进度框
+	 */
+	private void dissmissProgressDialog() {
+		if (progressDialog != null) {
+			progressDialog.dismiss();
+		}
+	}
+
+	@Override
+	public View getInfoContents(Marker arg0) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public View getInfoWindow(Marker arg0) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public void onInfoWindowClick(Marker arg0) {
+		// TODO Auto-generated method stub
+
+	}
+
+	@Override
+	public boolean onMarkerClick(Marker arg0) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public void onMapClick(LatLng arg0) {
+		// TODO Auto-generated method stub
+
+	}
+
+	@Override
+	public void onBusRouteSearched(BusRouteResult result, int errorCode) {
+
+	}
+
+	@Override
+	public void onDriveRouteSearched(DriveRouteResult result, int errorCode) {
+
+	}
+
+	@Override
+	public void onRideRouteSearched(RideRouteResult arg0, int arg1) {
+		// TODO Auto-generated method stub
+
+	}
+
+
+	@Override
+	public void onWalkRouteSearched(WalkRouteResult result, int errorCode) {
+		dissmissProgressDialog();
+		aMap.clear();// 清理地图上的所有覆盖物
+		if (errorCode == AMapException.CODE_AMAP_SUCCESS) {
+			if (result != null && result.getPaths() != null) {
+				if (result.getPaths().size() > 0) {
+					mWalkRouteResult = result;
+					final WalkPath walkPath = mWalkRouteResult.getPaths()	.get(0);
+					WalkRouteOverlay walkRouteOverlay = new WalkRouteOverlay(
+							this, aMap, walkPath,
+							mWalkRouteResult.getStartPos(),
+							mWalkRouteResult.getTargetPos());
+					walkRouteOverlay.removeFromMap();
+					walkRouteOverlay.addToMap();
+					walkRouteOverlay.zoomToSpan();
+					mBottomLayout.setVisibility(View.VISIBLE);
+					int dis = (int) walkPath.getDistance();
+					int dur = (int) walkPath.getDuration();
+					String des = AMapUtil.getFriendlyTime(dur)+"("+AMapUtil.getFriendlyLength(dis)+")";
+					mRouteTimeDes.setText(des);
+					mRouteDetailDes.setVisibility(View.GONE);
+					mBottomLayout.setOnClickListener(new OnClickListener() {
+						@Override
+						public void onClick(View v) {
+							Intent intent = new Intent(mContext, WalkRouteDetailActivity.class);
+							intent.putExtra("walk_path", walkPath);
+							intent.putExtra("walk_result", mWalkRouteResult);
+							startActivity(intent);
+						}
+					});
+				} else if (result != null && result.getPaths() == null) {
+					ToastUtil.show(mContext, com.run.sg.amap3d.R.string.no_result);
+				}
+			} else {
+				ToastUtil.show(mContext, com.run.sg.amap3d.R.string.no_result);
+			}
+		} else {
+			ToastUtil.showerror(this.getApplicationContext(), errorCode);
+		}
+	}
 }
