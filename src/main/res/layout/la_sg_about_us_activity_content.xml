@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/adver_pic"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:layout_margin="10dp"
+        android:scaleType="centerCrop"
+        android:background="@drawable/ic_sg_about_us_pic"/>
+
+    <TextView
+        android:id="@+id/about_us_text1_1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textSize="16sp" />
+
+    <ScrollView
+        android:id="@+id/introduce"
+        android:layout_width="match_parent"
+        android:layout_height="100dp"
+        android:layout_margin="10dp">
+        <TextView
+            android:id="@+id/about_us_text1_2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/about_us_text_1"
+            android:gravity="start"
+            android:textSize="14sp"/>
+
+    </ScrollView>
+
+    <TextView
+        android:id="@+id/about_us_text2_1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textSize="16sp"/>
+    <TextView
+        android:id="@+id/about_us_text2_2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textSize="16sp"/>
+    <TextView
+        android:id="@+id/about_us_text2_3"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textSize="16sp"/>
+
+    <TextView
+        android:id="@+id/about_us_text3"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textSize="16sp"/>
+
+    <TextView
+        android:id="@+id/contact_us"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/contact_us"
+        android:gravity="center"
+        android:textSize="30sp">
+    </TextView>
+
+</LinearLayout>

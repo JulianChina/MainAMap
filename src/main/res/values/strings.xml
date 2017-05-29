@@ -22,7 +22,7 @@
     <string name="custom_info_contents">Custom info contents</string>
     <string name="custom_info_window">Custom info window</string>
     <string name="default_info_window">Default info window</string>
-    <string name="demo_title">AMaps3D</string>
+    <string name="demo_title">好事</string>
     <string name="down_arrow">\u2193</string>
     <string name="drag_melbourne">Drag Melbourne</string>
     <string name="events_demo">Events功能</string>
@@ -256,5 +256,39 @@
     <string name="style_custom_on">开启个性化地图</string>
     <string name="style_custom_off">关闭个性化地图</string>
     <string name="btn_search_str">搜索</string>
+
+    <!--SG ADD START-->
+
+    <!--主界面UI-->
+    <string name="found_text">发现</string>
+    <string name="navigation_text">导航</string>
+    <string name="good_you_text">好事平台</string>
+    <string name="about_us_text">关于我们</string>
+
+    <array name="found_dialog_list_content">
+        <item>捐赠点</item>
+        <item>敬老院</item>
+        <item>失物招领处</item>
+        <item>福利院</item>
+    </array>
+
+    <string name="search_hint_text">搜索</string>
+    <string name="fruit_kind">水果</string>
+    <string name="vegetables_kind">蔬菜</string>
+    <string name="drink_kind">饮料</string>
+    <string name="more_kind">更多</string>
+
+    <string name="about_us_text_1">好事，传播更多力所能及的善意。\n
+            我们是由好事团队以及政府扶贫办合理创造的善心传播平台。\n
+            您可以在此发现许多需要帮助的人群和家庭，通过地图寻找他们的店铺，用实际行动来温暖他们的生活。\n
+            坚持着“不以善小而不为”的理念，我们不辞辛苦地联系着更多需要帮助的家庭，尽可能地用爱传播社会正能量。\n</string>
+
+    <string name="about_us_text_2_1">世界这么大，需要好事来温暖</string>
+    <string name="about_us_text_2_2">不幸这么多，需要好事来周转</string>
+    <string name="about_us_text_2_3">生活这么难，需要好事来分担</string>
+
+    <string name="about_us_text_3">欢迎来到好事，助力他人的“好生活”！</string>
+
+    <string name="contact_us">联系我们！！！</string>
 
 </resources>

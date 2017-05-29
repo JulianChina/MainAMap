@@ -30,4 +30,9 @@
     <color name="color666">#661B85FF</color>
     <color name="color_1B85FF">#1B85FF</color>
 
+    <!--SG ADD START-->
+    <color name="sg_bottom_bar_bac">#ffffff</color>
+    <color name="sg_bottom_bar_text_color">#000000</color>
+    <color name="sg_divider_color">#60000000</color>
+
 </resources>
