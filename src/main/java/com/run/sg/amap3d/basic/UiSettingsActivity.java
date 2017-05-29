@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -15,6 +16,7 @@ import android.view.Window;
 import android.widget.Button;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.amap.api.location.AMapLocation;
 import com.amap.api.location.AMapLocationClient;
@@ -35,6 +37,11 @@ import com.amap.api.maps.model.MarkerOptions;
 import com.amap.api.maps.model.MyLocationStyle;
 import com.amap.api.services.core.AMapException;
 import com.amap.api.services.core.LatLonPoint;
+import com.amap.api.services.geocoder.GeocodeAddress;
+import com.amap.api.services.geocoder.GeocodeQuery;
+import com.amap.api.services.geocoder.GeocodeResult;
+import com.amap.api.services.geocoder.GeocodeSearch;
+import com.amap.api.services.geocoder.RegeocodeResult;
 import com.amap.api.services.route.BusRouteResult;
 import com.amap.api.services.route.DriveRouteResult;
 import com.amap.api.services.route.RideRouteResult;
@@ -49,20 +56,25 @@ import com.run.sg.amap3d.util.SensorEventHelper;
 import com.run.sg.amap3d.util.ToastUtil;
 import com.run.sg.navigation.WalkRouteCalculateActivity;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import overlay.WalkRouteOverlay;
 
 /**
  * UI settings一些选项设置响应事件
  */
 public class UiSettingsActivity extends Activity implements
-		LocationSource, AMapLocationListener, AMap.OnMapClickListener,
-		AMap.OnMarkerClickListener, AMap.OnInfoWindowClickListener,
-		AMap.InfoWindowAdapter, RouteSearch.OnRouteSearchListener {
+		LocationSource, AMapLocationListener,
+		RouteSearch.OnRouteSearchListener,
+		GeocodeSearch.OnGeocodeSearchListener {
 
 	private Context mContext;
 	private AMap aMap;
 	private MapView mapView;
 	private UiSettings mUiSettings;
+	private Button mButtonSearch;
+	private Button mButtonNavi;
 	private LocationSource.OnLocationChangedListener mListener;
 	private AMapLocationClient mLocationClient;
 	private AMapLocationClientOption mLocationOption;
@@ -86,22 +98,35 @@ public class UiSettingsActivity extends Activity implements
 	private WalkRouteResult mWalkRouteResult;
 	private RelativeLayout mBottomLayout;
 	private TextView mRouteTimeDes, mRouteDetailDes;
+	private String[] mDonatePointString = new String[]{
+			"南山区桃园路293号前海西部人力资源市场1楼",
+			"南山区桃园路293号前海西部人力资源市场1楼",
+			"南头街98号南头街道办事处",
+			"南山区南头城中山东街80号二楼",
+			"南山区常兴路常兴新村906号",
+			"南山区前海路3168号大新前海商业中心二楼201-202",
+			"南山区南苑新村商业1栋二楼206-209",
+			"南山区红花西路南山豪庭203",
+			"南山区南头关口一路南富苑11栋107-108",
+			"南山区马家龙荔园新村10栋一楼1-3号",
+			"南山区玉泉路莲城花园11楼一楼"};
+	private List<LatLonPoint> mDonatePointLatLan = new ArrayList<LatLonPoint>();
+	private ProgressDialog progDialog = null;
+	private GeocodeSearch geocoderSearch;
+	private DonatePointQueryAsyncTask mDonatePointQueryAsyncTask;
+	private boolean mQueryFlag = true;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		requestWindowFeature(Window.FEATURE_NO_TITLE);// 不显示程序的标题栏
+		requestWindowFeature(Window.FEATURE_NO_TITLE);
 		setContentView(R.layout.ui_settings_activity);
 		mContext = this.getApplicationContext();
-		/*
-		 * 设置离线地图存储目录，在下载离线地图或初始化地图设置; 使用过程中可自行设置, 若自行设置了离线地图存储的路径，
-		 * 则需要在离线地图下载和使用地图页面都进行路径设置
-		 */
-		// Demo中为了其他界面可以使用下载的离线地图，使用默认位置存储，屏蔽了自定义设置
-		// MapsInitializer.sdcardDir =OffLineMapUtils.getSdCacheDir(this);
+
 		mapView = (MapView) findViewById(com.run.sg.amap3d.R.id.map);
 		mapView.onCreate(savedInstanceState);// 此方法必须重写
 		init();
+		registerListener();
 	}
 
 	/**
@@ -115,35 +140,11 @@ public class UiSettingsActivity extends Activity implements
 			openAllSettings(true);
 		}
 		mSensorHelper = new SensorEventHelper(this);
-		Button buttonScale = (Button) findViewById(com.run.sg.amap3d.R.id.buttonScale);
-		buttonScale.setOnClickListener(mOnClickListener);
-		Button buttonSearch = (Button) findViewById(R.id.btn_search);
-		buttonSearch.setOnClickListener(mOnClickListener);
+		mButtonNavi = (Button) findViewById(com.run.sg.amap3d.R.id.buttonScale);
+		mButtonNavi.setOnClickListener(mOnClickListener);
+		mButtonSearch = (Button) findViewById(R.id.btn_search);
+		mButtonSearch.setOnClickListener(mOnClickListener);
 	}
-
-	private OnClickListener mOnClickListener = new OnClickListener() {
-		@Override
-		public void onClick(View v) {
-			switch (v.getId()) {
-				case R.id.buttonScale :
-					Intent naviIntent = new Intent(UiSettingsActivity.this, WalkRouteCalculateActivity.class);
-					if (mStartPointLat > 0.0 && mStartPointLon > 0.0 && mEndPointLat > 0.0 && mEndPointLon > 0.0) {
-						naviIntent.putExtra("startPointLat", mStartPointLat);
-						naviIntent.putExtra("startPointLon", mStartPointLon);
-						naviIntent.putExtra("endPointLat", mEndPointLat);
-						naviIntent.putExtra("endPointLon", mEndPointLon);
-					}
-					startActivity(naviIntent);
-					break;
-				case R.id.btn_search :
-					Intent intent = new Intent(UiSettingsActivity.this, DistrictActivity.class);
-					startActivityForResult(intent, 0);
-					break;
-				default :
-					break;
-			}
-		}
-	};
 
 	/**
 	 * 设置一些amap的属性
@@ -184,6 +185,51 @@ public class UiSettingsActivity extends Activity implements
 		aMap.setMyLocationEnabled(flag);  // 可触发定位并显示定位层
 	}
 
+	private OnClickListener mOnClickListener = new OnClickListener() {
+		@Override
+		public void onClick(View v) {
+			switch (v.getId()) {
+				case R.id.buttonScale :
+					Intent naviIntent = new Intent(UiSettingsActivity.this, WalkRouteCalculateActivity.class);
+					if (mStartPointLat > 0.0 && mStartPointLon > 0.0 && mEndPointLat > 0.0 && mEndPointLon > 0.0) {
+						naviIntent.putExtra("startPointLat", mStartPointLat);
+						naviIntent.putExtra("startPointLon", mStartPointLon);
+						naviIntent.putExtra("endPointLat", mEndPointLat);
+						naviIntent.putExtra("endPointLon", mEndPointLon);
+						startActivity(naviIntent);
+					} else {
+						Toast.makeText(UiSettingsActivity.this, "error navigation", Toast.LENGTH_LONG).show();
+					}
+					break;
+				case R.id.btn_search :
+//					Intent intent = new Intent(UiSettingsActivity.this, DistrictActivity.class);
+//					startActivityForResult(intent, 0);
+//					initRoutePlan();
+					if (!mDonatePointLatLan.isEmpty()) {
+						mDonatePointLatLan.clear();
+					}
+					if (mDonatePointQueryAsyncTask != null
+							&& mDonatePointQueryAsyncTask.getStatus() == AsyncTask.Status.RUNNING) {
+						mDonatePointQueryAsyncTask.cancel(true);
+					}
+					mDonatePointQueryAsyncTask = new DonatePointQueryAsyncTask();
+					mDonatePointQueryAsyncTask.execute();
+					break;
+				default :
+					break;
+			}
+		}
+	};
+
+	/**
+	 * 方法必须重写
+	 */
+	@Override
+	protected void onSaveInstanceState(Bundle outState) {
+		super.onSaveInstanceState(outState);
+		mapView.onSaveInstanceState(outState);
+	}
+
 	/**
 	 * 方法必须重写
 	 */
@@ -209,15 +255,6 @@ public class UiSettingsActivity extends Activity implements
 		}
 		mapView.onPause();
 		mFirstFix = false;
-	}
-
-	/**
-	 * 方法必须重写
-	 */
-	@Override
-	protected void onSaveInstanceState(Bundle outState) {
-		super.onSaveInstanceState(outState);
-		mapView.onSaveInstanceState(outState);
 	}
 
 	/**
@@ -322,17 +359,63 @@ public class UiSettingsActivity extends Activity implements
 		mLocationClient = null;
 	}
 
-	@Override
-	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-		if (requestCode == 0 && resultCode == 0) {
-			Bundle bundle = data.getBundleExtra("destination");
-			mCityCode = bundle.getString("cityCode");
-			mEndPointLat = bundle.getDouble("Lat");
-			mEndPointLon = bundle.getDouble("Lon");
-			mStartPoint = new LatLonPoint(mStartPointLat, mStartPointLon);
-			mEndPoint = new LatLonPoint(mEndPointLat, mEndPointLon);
-			routePlan(mStartPoint, mEndPoint);
-		}
+//	@Override
+//	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+//		if (requestCode == 0 && resultCode == 0) {
+//			Bundle bundle = data.getBundleExtra("destination");
+//			mCityCode = bundle.getString("cityCode");
+//			mEndPointLat = bundle.getDouble("Lat");
+//			mEndPointLon = bundle.getDouble("Lon");
+//			mStartPoint = new LatLonPoint(mStartPointLat, mStartPointLon);
+//			mEndPoint = new LatLonPoint(mEndPointLat, mEndPointLon);
+//			routePlan(mStartPoint, mEndPoint);
+//		}
+//	}
+
+	private void registerListener() {
+//		aMap.setOnMapClickListener(new AMap.OnMapClickListener() {
+//			@Override
+//			public void onMapClick(LatLng latLng) {
+//
+//			}
+//		});
+		aMap.setOnMarkerClickListener(new AMap.OnMarkerClickListener() {
+			@Override
+			public boolean onMarkerClick(Marker marker) {
+				if (marker != null) {
+					try {
+						LatLng endPoint = marker.getPosition();
+						mEndPointLat = endPoint.latitude;
+						mEndPointLon = endPoint.longitude;
+						mEndPoint = new LatLonPoint(mEndPointLat, mEndPointLon);
+						mStartPoint = new LatLonPoint(mStartPointLat, mStartPointLon);
+						routePlan(mStartPoint, mEndPoint);
+					} catch (Exception e) {
+						// TODO: handle exception
+					}
+				}else {
+					Toast.makeText(UiSettingsActivity.this, "error marker click", Toast.LENGTH_LONG).show();
+				}
+				return false;
+			}
+		});
+//		aMap.setOnInfoWindowClickListener(new AMap.OnInfoWindowClickListener() {
+//			@Override
+//			public void onInfoWindowClick(Marker marker) {
+//
+//			}
+//		});
+//		aMap.setInfoWindowAdapter(new AMap.InfoWindowAdapter() {
+//			@Override
+//			public View getInfoWindow(Marker marker) {
+//				return null;
+//			}
+//
+//			@Override
+//			public View getInfoContents(Marker marker) {
+//				return null;
+//			}
+//		});
 	}
 
 	private void routePlan(LatLonPoint startPoint, LatLonPoint endPoint) {
@@ -342,19 +425,11 @@ public class UiSettingsActivity extends Activity implements
 	}
 
 	private void initRoutePlan() {
-		registerListener();
 		mRouteSearch = new RouteSearch(this);
 		mRouteSearch.setRouteSearchListener(this);
 		mBottomLayout = (RelativeLayout) findViewById(com.run.sg.amap3d.R.id.bottom_layout);
 		mRouteTimeDes = (TextView) findViewById(com.run.sg.amap3d.R.id.firstline);
 		mRouteDetailDes = (TextView) findViewById(com.run.sg.amap3d.R.id.secondline);
-	}
-
-	private void registerListener() {
-		aMap.setOnMapClickListener(UiSettingsActivity.this);
-		aMap.setOnMarkerClickListener(UiSettingsActivity.this);
-		aMap.setOnInfoWindowClickListener(UiSettingsActivity.this);
-		aMap.setInfoWindowAdapter(UiSettingsActivity.this);
 	}
 
 	private void setFromAndToMarker(LatLonPoint startPoint, LatLonPoint searchPoint) {
@@ -410,36 +485,6 @@ public class UiSettingsActivity extends Activity implements
 	}
 
 	@Override
-	public View getInfoContents(Marker arg0) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public View getInfoWindow(Marker arg0) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public void onInfoWindowClick(Marker arg0) {
-		// TODO Auto-generated method stub
-
-	}
-
-	@Override
-	public boolean onMarkerClick(Marker arg0) {
-		// TODO Auto-generated method stub
-		return false;
-	}
-
-	@Override
-	public void onMapClick(LatLng arg0) {
-		// TODO Auto-generated method stub
-
-	}
-
-	@Override
 	public void onBusRouteSearched(BusRouteResult result, int errorCode) {
 
 	}
@@ -455,16 +500,16 @@ public class UiSettingsActivity extends Activity implements
 
 	}
 
-
 	@Override
 	public void onWalkRouteSearched(WalkRouteResult result, int errorCode) {
 		dissmissProgressDialog();
+		mButtonNavi.setVisibility(View.VISIBLE);
 		aMap.clear();// 清理地图上的所有覆盖物
 		if (errorCode == AMapException.CODE_AMAP_SUCCESS) {
 			if (result != null && result.getPaths() != null) {
 				if (result.getPaths().size() > 0) {
 					mWalkRouteResult = result;
-					final WalkPath walkPath = mWalkRouteResult.getPaths()	.get(0);
+					final WalkPath walkPath = mWalkRouteResult.getPaths().get(0);
 					WalkRouteOverlay walkRouteOverlay = new WalkRouteOverlay(
 							this, aMap, walkPath,
 							mWalkRouteResult.getStartPos(),
@@ -495,6 +540,111 @@ public class UiSettingsActivity extends Activity implements
 			}
 		} else {
 			ToastUtil.showerror(this.getApplicationContext(), errorCode);
+		}
+	}
+
+	class DonatePointQueryAsyncTask extends AsyncTask<Void, Void, Void> {
+		@Override
+		protected void onPreExecute() {
+			super.onPreExecute();
+			initQuery();
+		}
+
+		@Override
+		protected Void doInBackground(Void... params) {
+			getLatlon();
+			return null;
+		}
+
+		@Override
+		protected void onProgressUpdate(Void... values) {
+			super.onProgressUpdate(values);
+		}
+
+		@Override
+		protected void onPostExecute(Void aVoid) {
+			super.onPostExecute(aVoid);
+			if (aMap == null) {
+				aMap = mapView.getMap();
+			}
+			if (mDonatePointLatLan != null && !mDonatePointLatLan.isEmpty()) {
+				for (int i = 0; i < mDonatePointLatLan.size(); ++i) {
+					Marker localGeoMarker = aMap.addMarker(new MarkerOptions().anchor(0.5f, 0.5f)
+							.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE))
+							.position(new LatLng(mDonatePointLatLan.get(i).getLatitude(), mDonatePointLatLan.get(i).getLongitude()))
+							.title(mDonatePointString[i]));
+				}
+				aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(
+						new LatLng(mDonatePointLatLan.get(0).getLatitude(), mDonatePointLatLan.get(0).getLongitude()), 14));
+			}
+			dismissDialog();
+		}
+	}
+
+	private void initQuery() {
+		geocoderSearch = new GeocodeSearch(this);
+		geocoderSearch.setOnGeocodeSearchListener(this);
+		progDialog = new ProgressDialog(this);
+		showDialog();
+	}
+
+	/**
+	 * 响应地理编码
+	 */
+	private void getLatlon() {
+		for (int i = 0; i < mDonatePointString.length; ++i) {
+			GeocodeQuery query = new GeocodeQuery("深圳市" + mDonatePointString[i], "0755");// 第一个参数表示地址，第二个参数表示查询城市，中文或者中文全拼，citycode、adcode，
+			geocoderSearch.getFromLocationNameAsyn(query);// 设置同步地理编码请求
+			mQueryFlag = false;
+			while (!mQueryFlag) {
+			}
+		}
+	}
+
+	/**
+	 * 地理编码查询回调
+	 */
+	@Override
+	public void onGeocodeSearched(GeocodeResult result, int rCode) {
+		if (rCode == AMapException.CODE_AMAP_SUCCESS) {
+			if (result != null && result.getGeocodeAddressList() != null
+					&& result.getGeocodeAddressList().size() > 0) {
+				GeocodeAddress address = result.getGeocodeAddressList().get(0);
+				mDonatePointLatLan.add(address.getLatLonPoint());
+				mQueryFlag = true;
+			} else {
+				ToastUtil.show(this, R.string.no_result);
+			}
+		} else {
+			ToastUtil.showerror(this, rCode);
+		}
+	}
+
+	/**
+	 * 逆地理编码回调
+	 */
+	@Override
+	public void onRegeocodeSearched(RegeocodeResult result, int rCode) {
+
+	}
+
+	/**
+	 * 显示进度条对话框
+	 */
+	private void showDialog() {
+		progDialog.setProgressStyle(ProgressDialog.STYLE_SPINNER);
+		progDialog.setIndeterminate(false);
+		progDialog.setCancelable(true);
+		progDialog.setMessage("正在获取地址");
+		progDialog.show();
+	}
+
+	/**
+	 * 隐藏进度条对话框
+	 */
+	private void dismissDialog() {
+		if (progDialog != null) {
+			progDialog.dismiss();
 		}
 	}
 }
